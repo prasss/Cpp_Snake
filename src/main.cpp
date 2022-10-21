@@ -2,11 +2,11 @@
 #include <thread>
 #include <ncurses.h>
 #include <mutex>
-//#include "Snake.h"
+#include <chrono>
+#include <vector>
+#include <stdio.h>
 
 using namespace std;
-
-static mutex myMutex;
 
 #define DIM_X 30
 #define DIM_Y 15
@@ -18,10 +18,9 @@ typedef enum{ DIR_0, DIR_UP, DIR_DOWN, DIR_LEFT, DIR_RIGHT}dir_t;
 const char b = '#';   //b for border
 const char x = ' ';   //x for space
 const char f = '*';   //f for fruit
-const char s = 'o';   //s for space
+const char s = 'o';   //s for snake
 
 class Fruit;
-
 
 void demo(){
     std::cout << "Demo!" << std::endl;
@@ -32,13 +31,17 @@ struct coordinates{
     int y;
 };
 
+static mutex myMutex;
+static char buttonPressed = 'n'; //none
+
 class Snake{
     private:
         coordinates head;
-        dir_t       snake_dir = DIR_0;
+        coordinates tail[25];
+        volatile int length = 0;
+        dir_t snake_dir = DIR_0;
     public:
-        Snake(){  setX(SNAKE_START_X); setY(SNAKE_START_Y);  };
-        void draw(){ std::cout << "Sssss...." << std::endl; };
+        Snake(){  setX(SNAKE_START_X); setY(SNAKE_START_Y);  }
 
         void setX(const int x_coord){ head.x = x_coord; };
         void setY(const int y_coord){ head.y = y_coord; };
@@ -47,8 +50,84 @@ class Snake{
         int getX(){ return head.x; };
         int getY(){ return head.y; };
 
-        friend void drawMap(Snake snake, Fruit fruit);
+        int getTailX(int i){ return tail[i].x; };
+        int getTailY(int i){ return tail[i].y; };
 
+        int searchTailX(int tailX){
+            for(int i = 0; i < length; i++){
+                if(tail[i].x == tailX){
+                    return tailX;
+                }
+            }
+            return -1;
+        };
+
+        int searchTailY(int tailY){
+            for(int i = 0; i < length; i++){
+                if(tail[i].y == tailY){
+                    return tailY;
+                }
+            }
+            return -1;
+        };
+
+        int searchTailByCoordinate(coordinates coord){
+            for(int i = 0; i < length; i++){
+                if(tail[i].y == coord.y && tail[i].x == coord.x){
+                    return 1;
+                }
+        }
+            return -1;
+        };
+
+        int getLength(){ return length; };
+        void setLength(int len){ length = len; };
+
+        void updateBody(){
+
+            for(int i=length-1; i>=0; i--){
+                tail[i+1].x = tail[i].x;
+                tail[i+1].y = tail[i].y;
+            }
+
+            tail[0].x = head.x;
+            tail[0].y = head.y;
+
+
+            cout << "tail at: " << tail[0].x << " , " << tail[0].y << " | " << tail[1].x << " , " << tail[1].y << " | " << tail[2].x << " , " << tail[2].y << "\n\r";
+        }
+
+       void interpretDirection(){
+
+            myMutex.lock();
+            char dirChar = buttonPressed;
+            myMutex.unlock();
+
+            switch(dirChar){
+                case 'a':
+                    setX(--head.x);
+                    break;
+
+                case 'd':
+                    setX(++head.x);
+                    break;
+
+                case 'w':
+                    setY(--head.y);
+                    break;
+
+                case 's':
+                    setY(++head.y);
+                    break;
+
+                default:
+                break;
+            }
+
+        }
+
+        friend void drawMap(Snake snake, Fruit fruit);
+        friend class Model;
 };
 
 class Fruit{
@@ -66,11 +145,24 @@ class Fruit{
         int getY(){ return fruitCoord.y; };
 
         friend void drawMap(Snake snake, Fruit fruit);
+        friend class Model;
 };
 
 class Model{
     private:
         int score;
+
+    public:
+        int isFruitEaten(Snake &snake, Fruit &fruit){
+            if(snake.head.x == fruit.fruitCoord.x && snake.head.y == fruit.fruitCoord.y){
+                int len = snake.getLength();
+                fruit.randomizeFruit();
+                snake.setLength(++len);
+                return true;
+            }
+
+             return false;
+        }
 
 };
 
@@ -85,9 +177,8 @@ class View{
         int getDimX(){ return dim_x; };
         int getDimY(){ return dim_y; };
 
+ 
         void drawMap(Snake snake, Fruit fruit){
-
-            fruit.randomizeFruit();
 
             for(int i = 0; i < dim_x; i++)
                 std::cout << b;
@@ -97,18 +188,26 @@ class View{
             for(int i = 0; i < dim_y; i++){
 
                 for(int j = 0; j < dim_x; j++){
+
+                    coordinates coord = {j,i};
+
                     if(j == 0 || j == dim_x - 1) {
                         std::cout << b;
                         if(j == dim_x - 1)  std::cout << "\n\r";
                     }
                     else{
                         if( i == fruit.getY() && j == fruit.getX()){  
-                            std::cout << f;  }
+                            std::cout << f;  
+                            }
 
                         else if(i == snake.getY() && j == snake.getX()){
-                            std::cout << s;
+                            std::cout << 'O';
                         }
-                        else    
+
+                        else if(snake.searchTailByCoordinate(coord) == 1)
+                            std::cout << 'o';
+                            
+                        else   
                             std::cout << x;
                     }
 
@@ -119,6 +218,7 @@ class View{
                 std::cout << b;
 
             std::cout << "\n\r";
+            std::cout << "Len: " << snake.getLength() << "\n\r";
             std::cout << "\n\r";
         }
 };
@@ -126,49 +226,39 @@ class View{
 class Controller{
 
     public:
-        void interpretDirection(){  //might have to do getchar in a different Thread
+        void getDirectionChar(){  //might have to do getchar in a different Thread
             
             char dirChar = getch();
-            
-            switch(dirChar){
-                case 'a':
-                std::cout << "dirChar: " << dirChar << "\n\r";
-                    break;
 
-                case 'd':
-                std::cout << "dirChar: " << dirChar << "\n\r";
-                    break;
-
-                case 'w':
-                std::cout << "dirChar: " << dirChar << "\n\r";
-                    break;
-
-                case 's':
-                std::cout << "dirChar: " << dirChar << "\n\r";
-                    break;
-
-                default:
-                break;
+            if(dirChar == 'a' || dirChar == 'w' || dirChar == 's' ||dirChar == 'd'){
+                std::lock_guard<std::mutex> lock(myMutex);
+                buttonPressed = dirChar;
             }
+
         };
 };
 
 
 void mainThread(){
+    
     Snake snake;
-    //snake.draw();
-
     Fruit fruit;
-
     View gameView(DIM_X,DIM_Y);
+    Model model;
 
-    //std::lock_guard<std::mutex> lock(myMutex);
-    gameView.drawMap(snake, fruit);
+    while(1){
+        snake.interpretDirection();
+        gameView.drawMap(snake, fruit);
+        model.isFruitEaten(snake, fruit);
+        snake.updateBody();
+        std::this_thread::sleep_for(chrono::milliseconds(200));
+        system("clear");
+    }
 
 }
 
 
-void interpretDir(){
+void getDir(){
     Controller control;
     initscr();
     nodelay(stdscr, true);
@@ -176,7 +266,7 @@ void interpretDir(){
     raw();
     
     while(1)
-        control.interpretDirection();
+        control.getDirectionChar();
     
     endwin();
 }
@@ -186,14 +276,12 @@ void interpretDir(){
 
 int main(){
 
-while(1){
-    std::thread thread1(interpretDir);
+    std::thread thread1(getDir);
     std::thread thread2(mainThread);
 
     //synchronize threads:
     thread1.join();                // pauses until first finishes
     thread2.join();               // pauses until second finishes
-}
 
 
 }
