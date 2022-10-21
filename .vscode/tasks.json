@@ -8,7 +8,6 @@
                 "-fdiagnostics-color=always",
                 "-g",
                 "${file}",
-                "-I${workspaceFolder}/headers/",
                 "-I${workspaceFolder}/src/",
                 "-lncurses",
                 "-o",
