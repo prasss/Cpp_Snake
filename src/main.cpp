@@ -20,6 +20,8 @@ const char x = ' ';   //x for space
 const char f = '*';   //f for fruit
 const char s = 'o';   //s for snake
 
+bool gameEnd = false;
+
 class Fruit;
 
 void demo(){
@@ -93,8 +95,25 @@ class Snake{
             tail[0].x = head.x;
             tail[0].y = head.y;
 
+            if(tail[0].x <= 0 || tail[0].x >= DIM_X - 1 || tail[0].y < 0 || tail[0].y > DIM_Y){  //the snake came in contact with the borders
+                gameEnd = true;
+                cout << " game end triggered..." << "\n\r";
+            }
 
-            cout << "tail at: " << tail[0].x << " , " << tail[0].y << " | " << tail[1].x << " , " << tail[1].y << " | " << tail[2].x << " , " << tail[2].y << "\n\r";
+            //cout << "head at: " << head.x << " , " << head.y << "\n\r";
+            //cout << "tail at: " << tail[0].x << " , " << tail[0].y << " | " << tail[1].x << " , " << tail[1].y << " | " << tail[2].x << " , " << tail[2].y << "\n\r";
+        }
+
+        void resetSnake(){
+
+            length = 0;
+
+            for(int i=length-1; i>=0; i--){
+                tail[i].x = SNAKE_START_X;
+                tail[i].y = SNAKE_START_Y;
+            }
+
+            setX(SNAKE_START_X); setY(SNAKE_START_Y);
         }
 
        void interpretDirection(){
@@ -113,7 +132,13 @@ class Snake{
                     break;
 
                 case 'w':
-                    setY(--head.y);
+                    
+                    if(gameEnd == true){
+                        gameEnd = false;
+                        buttonPressed = 'n';
+                    }
+                    else setY(--head.y);
+
                     break;
 
                 case 's':
@@ -138,9 +163,20 @@ class Fruit{
 
     public:
         void randomizeFruit(){ 
-                setX(rand() % DIM_X);
-                setY(rand() % DIM_Y);
+                int tempX = rand() % DIM_X;
+                int tempY = rand() % DIM_Y;
+
+                if(tempX == 0)  tempX = 1;
+                if(tempY == 0)  tempY = 1;
+
+                setX(tempX);
+                setY(tempY);
             };
+
+        void resetFruit(){
+            fruitCoord = {20, 10};
+        }
+
         int getX(){ return fruitCoord.x; };
         int getY(){ return fruitCoord.y; };
 
@@ -150,7 +186,6 @@ class Fruit{
 
 class Model{
     private:
-        int score;
 
     public:
         int isFruitEaten(Snake &snake, Fruit &fruit){
@@ -162,6 +197,13 @@ class Model{
             }
 
              return false;
+        }
+
+        void checkGameState(Snake &snake, Fruit &fruit){
+            if(gameEnd){
+                snake.resetSnake();
+                fruit.resetFruit();
+            }
         }
 
 };
@@ -179,6 +221,13 @@ class View{
 
  
         void drawMap(Snake snake, Fruit fruit){
+
+            if(gameEnd)
+            {
+                std::cout << "GAME OVER!!!\n\r";
+                std::cout << "press 'w' to continue...\n\r";
+                return;
+            }
 
             for(int i = 0; i < dim_x; i++)
                 std::cout << b;
@@ -219,6 +268,7 @@ class View{
 
             std::cout << "\n\r";
             std::cout << "Len: " << snake.getLength() << "\n\r";
+            std::cout << "Fruit at: (" << fruit.getX() << ","<< fruit.getY() << ")" << "\n\r";
             std::cout << "\n\r";
         }
 };
@@ -247,6 +297,7 @@ void mainThread(){
     Model model;
 
     while(1){
+        model.checkGameState(snake, fruit);
         snake.interpretDirection();
         gameView.drawMap(snake, fruit);
         model.isFruitEaten(snake, fruit);
